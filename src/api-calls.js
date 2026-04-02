@@ -39,10 +39,8 @@ async function getAPIDefaults(shouldReturn = null) {
         TCAPIDefaults = TCAPICallParams;
         HordeAPIDefaults = HordeAPICallParams;
         if (shouldReturn) {
-            let defaults = [TCAPIDefaults, HordeAPIDefaults]
-            return defaults
+            return [TCAPIDefaults, HordeAPIDefaults];
         }
-
     } catch (error) {
         logger.error('Error reading or parsing default-API-Parameters.json:', error);
     }
@@ -53,15 +51,18 @@ async function getAPIDefaults(shouldReturn = null) {
 // and AIChatUserList but BEFORE sending the network request. Enables single-pass
 // streaming setup (initialize listeners early) without a separate dry-run.
 async function getAIResponse(isStreaming, hordeKey, engineMode, user, liveConfig, liveAPI, preInitCallback, parsedMessage, shouldContinue) {
-    // logger.warn('getAIResponse liveAPI:', liveAPI)
-    // logger.warn(`liveConfig: ${JSON.stringify(liveConfig)}`);
     const isCCSelected = liveAPI.type === 'CC';
     const isClaude = liveAPI.claude;
 
-    let apiCallParams;
-
     try {
-        apiCallParams = engineMode === 'TC' ? TCAPIDefaults : HordeAPIDefaults;
+        if (!TCAPIDefaults || !HordeAPIDefaults) {
+            await getAPIDefaults();
+        }
+        let apiCallParams = engineMode === 'TC' ? TCAPIDefaults : HordeAPIDefaults;
+
+        if (!apiCallParams && !isCCSelected) {
+            throw new Error("API Default Parameters could not be loaded.");
+        }
 
         const charFile = liveConfig.promptConfig.selectedCharacter;
         const cardData = await fio.charaRead(charFile, 'png');
@@ -137,9 +138,9 @@ async function getAIResponse(isStreaming, hordeKey, engineMode, user, liveConfig
                 apiCallParams.max_tokens = Number(liveConfig.promptConfig.responseLength);
             }
 
-        } 
+        }
 
-        
+
     const [finalApiCallParams, entitiesList] = await setStopStrings(liveConfig, apiCallParams, includedChatObjects, liveAPI);
 
     // Pre-stream initializer (if provided)
@@ -353,7 +354,7 @@ async function setStopStrings(liveConfig, APICallParams, includedChatObjects, li
     //logger.info(APICallParams)
     //logger.info(targetObj)
     //   logger.debug(liveAPI)
-    //  logger.debug(liveConfig) 
+    //  logger.debug(liveConfig)
     if (liveAPI.claude === (1 || true)) { //for claude
         //logger.info('setting Claude stop strings')
         APICallParams.stop_sequences = targetObj
@@ -374,12 +375,15 @@ async function setStopStrings(liveConfig, APICallParams, includedChatObjects, li
 //MARK: replaceMacros
 function replaceMacros(string, username = null, charname = null) {
     //logger.debug(username, charname)
-    var replacedString = string
-    if (username !== null && charname !== null) {
-        replacedString = replacedString.replace(/{{user}}/g, username);
-        replacedString = replacedString.replace(/{{char}}/g, charname);
+    if (typeof string !== 'string') {
+      return '';
     }
-    return replacedString
+    var replacedString = string;
+    if (username !== null && charname !== null) {
+      replacedString = replacedString.replace(/{{user}}/g, username);
+      replacedString = replacedString.replace(/{{char}}/g, charname);
+    }
+    return replacedString;
 }
 
 function collapseNewlines(x) {
